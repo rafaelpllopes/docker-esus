@@ -1,0 +1,5 @@
+# Ignorar os arquivos da pasta sistema
+sistemas/
+
+# Ignorar os arquivos da pasta backups
+backups/
