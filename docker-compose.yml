@@ -1,0 +1,35 @@
+version: "3.1"
+services:
+    esus:
+        image: esusspring
+        restart: always
+        container_name: esus-spring
+        hostname: esus-spring
+        ports:
+            - 8080:8080
+        environment:
+            - TZ='America/Sao_Paulo'
+        privileged: true
+        volumes: 
+            - ./application.properties:/opt/e-SUS/webserver/config/application.properties
+            - ./sistemas:/home/esus/sistemas
+            - /sys/fs/cgroup:/sys/fs/cgroup:ro
+        command: /sbin/init
+        depends_on:
+            - database
+    database:
+        image: esusdb
+        restart: always
+        container_name: database-esus
+        hostname: database-esus
+        ports:
+            - 5432:5432
+        environment:
+            - TZ='America/Sao_Paulo'
+        privileged: true
+        volumes:
+            - ./backups:/home/esus/backups
+            - /sys/fs/cgroup:/sys/fs/cgroup:ro
+        command: /sbin/init
+networks: 
+    esus-rede:
