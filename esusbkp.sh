@@ -26,9 +26,10 @@ else
 fi
 }
 realiza_backup(){
-pg_dump -F c -U postgres -h localhost -d esus > $DSTDIR/$DATA"_itapeva-sp".backup
-if [ -e $DSTDIR/esusItapevaSP_$DATA.backup ]; then
-    chown info:root $DSTDIR/esusItapevaSP_$DATA.backup
+ARQ_BKP=$DSTDIR/$DATA"_itapeva-sp".backup
+pg_dump -F c -U postgres -h localhost -d esus > $ARQ_BKP
+if [ -e $ARQ_BKP ]; then
+    chown postgres:root $ARQ_BKP
     echo "BACKUP REALIZADO COM SUCESSO !!!" >> $LOG
 else
     echo "ERRO AO REALIZAR BACKUP" >> $LOG
@@ -42,3 +43,4 @@ delete_backup
 TERMINO=`date +%d/%m/%Y-%H:%M:%S`
 echo "backup da BASE do ESUS terminado em $TERMINO" >> $LOG
 echo "_______________________________________________________" >> $LOG
+
