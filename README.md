@@ -40,7 +40,6 @@ WORKDIR $WORKSPACE
 
 RUN apt update \
     && apt upgrade -y \
-    && apt upgrade -y \
     && apt install wget -y \
     && apt install software-properties-common -y \
     && apt install sudo -y \
@@ -57,6 +56,7 @@ ENV export TZ='America/Sao_Paulo'
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
     && apt update \
     && apt install -y tzdata
+RUN timedatectl set-timezone "America/Sao_Paulo"
 
 RUN sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
     && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add - \
@@ -168,6 +168,8 @@ ENV export TZ='America/Sao_Paulo'
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
     && apt update \
     && apt install -y tzdata
+
+RUN timedatectl set-timezone "America/Sao_Paulo"
 
 RUN apt update && apt install openjdk-8-jdk -y \
     && apt clean -y
