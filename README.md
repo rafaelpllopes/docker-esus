@@ -29,7 +29,7 @@ mkdir sistemas && mkdir backups
 
 ## Criar Container do Banco de Dados Postgresql
 
-### Dockerfile
+### Dockerfile.postgresql
 ```
 FROM jrei/systemd-ubuntu
 
@@ -97,7 +97,7 @@ EXPOSE 5432
 ```
 ### Construir a imagem
 ```
-docker build -t esusdb .
+docker -f Dockerfile.postgresql -t esusdb .
 ```
 
 ### Subir o container
@@ -141,7 +141,7 @@ CREATE DATABASE esus encoding 'UTF8';
 
 ## Criar Container do Aplicação
 
-### Dockerfile
+### Dockerfile.spring
 
 ```
 FROM jrei/systemd-ubuntu
@@ -190,7 +190,7 @@ EXPOSE 8080
 ```
 ### Construir a imagem
 ```
-docker build -t esusspring .
+docker -f Dockerfile.spring -t esusspring .
 ```
 
 ### Subir o container
