@@ -10,7 +10,7 @@ echo "backup da BASE do ESUS iniciado em $INICIO" >> $LOG
 
 delete_backup(){
 #apagando arquivos mais antigos (a mais de 30 dias que existe)
-find $DSTDIR -name "esus*" -ctime $TIME_BKCP -exec rm -f {} ";"
+find $DSTDIR -name "*_itapeva-sp*" -ctime $TIME_BKCP -exec rm -f {} ";"
 if [ $? -eq 0 ] ; then
 echo "Arquivo de backup mais antigo eliminado com sucesso!" >> $LOG
 else
