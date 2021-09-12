@@ -17,7 +17,8 @@ mkdir sistemas && mkdir backups
 ├── backups
 ├── cron-esusdb
 ├── docker-compose.yml
-├── Dockerfile
+├── Dockerfile.postgresql
+├── Dockerfile.spring
 ├── esusbkp.sh
 ├── java.conf
 ├── log.txt
