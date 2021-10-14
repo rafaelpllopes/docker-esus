@@ -1,10 +1,10 @@
 #!/bin/bash
-DATA=`date +%Y%m%d%H%M%S`			#pega data atual
+DATA=`date +%Y%m%d%H%M%S`	#pega data atual
 DSTDIR=/home/esus/backups	#diretório de destino do backup
-TIME_BKCP=+30				    #número de dias em que será deletado o arquivo de backup
+TIME_BKCP=+30			    #número de dias em que será deletado o arquivo de backup
 INICIO=`date +%d/%m/%Y-%H:%M:%S`
 LOG=/var/log/esus/log.txt
-echo "********* —– BACKUP DO ESUS —– ***********" >> $LOG
+echo "********* -- BACKUP DO ESUS -- ***********" >> $LOG
 echo "____________________________________________________" >> $LOG
 echo "backup da BASE do ESUS iniciado em $INICIO" >> $LOG
 
@@ -43,4 +43,3 @@ delete_backup
 TERMINO=`date +%d/%m/%Y-%H:%M:%S`
 echo "backup da BASE do ESUS terminado em $TERMINO" >> $LOG
 echo "_______________________________________________________" >> $LOG
-
