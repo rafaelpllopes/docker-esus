@@ -98,7 +98,7 @@ EXPOSE 5432
 ```
 ### Construir a imagem
 ```
-docker -f Dockerfile.postgresql -t esusdb .
+docker build -f Dockerfile.postgresql -t esusdb .
 ```
 
 ### Subir o container
@@ -191,7 +191,7 @@ EXPOSE 8080
 ```
 ### Construir a imagem
 ```
-docker -f Dockerfile.spring -t esusspring .
+docker build -f Dockerfile.spring -t esusspring .
 ```
 
 ### Subir o container
