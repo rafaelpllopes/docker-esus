@@ -10,8 +10,7 @@ services:
         environment:
             - TZ='America/Sao_Paulo'
         privileged: true
-        volumes: 
-            - ./application.properties:/opt/e-SUS/webserver/config/application.properties
+        volumes:
             - ./sistemas:/home/esus/sistemas
             - /sys/fs/cgroup:/sys/fs/cgroup:ro
         command: /sbin/init
