@@ -6,9 +6,9 @@ Passos para criar e usar o e-SUS PEC pelo docker
 * Docker Compose
 * [Baixar os arquivos que serão usados](https://github.com/rafaelpllopes/docker-esus/archive/refs/heads/main.zip)
 
-### Criar as pastas sistemas e backups dentro da pasta do projeto
+### Criar as pastas necessarias do projeto
 ```
-mkdir sistemas && mkdir backups
+mkdir -p sistemas backups pgdata chaves
 ```
 ### Estrutura de diretorios e arquivos
 ```
