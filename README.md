@@ -15,95 +15,63 @@ mkdir sistemas && mkdir backups
 .
 ├── application.properties
 ├── backups
+├── chaves
 ├── cron-esusdb
 ├── docker-compose.yml
-├── Dockerfile.postgresql
-├── Dockerfile.spring
+├── Dockerfile-esus
+├── Dockerfile-postgres
 ├── esusbkp.sh
+├── init-db.sh
 ├── java.conf
 ├── log.txt
-├── pg_hba.conf
+├── pgdata
 ├── pgpass
-├── postgresql.conf
+├── README.md
 └── sistemas
 ```
 
 ## Criar Container do Banco de Dados Postgresql
 
-### Dockerfile.postgresql
+### Dockerfile.postgres
 ```
-FROM jrei/systemd-ubuntu
+FROM postgres:9.6
 
-ENV WORKSPACE=/home/esus/backups
+# Configura locale pt_BR (se disponível na imagem base)
+RUN set -ex; \
+    if ! localedef -i pt_BR -c -f UTF-8 -A /usr/share/locale/locale.alias pt_BR.UTF-8; then \
+        echo "Locale pt_BR.UTF-8 não pôde ser criado, continuando com locale padrão"; \
+    fi
 
-ADD . $WORKSPACE
-WORKDIR $WORKSPACE
+# Script de inicialização personalizado
+COPY init-db.sh /docker-entrypoint-initdb.d/
+RUN chmod +x /docker-entrypoint-initdb.d/init-db.sh
 
-RUN apt update \
-    && apt upgrade -y \
-    && apt install wget -y \
-    && apt install software-properties-common -y \
-    && apt install sudo -y \
-    && apt install vim -y \
-    && apt install unzip -y \
-    && apt install htop -y \
-    && apt install locales -y \
-    && apt-get install tzdata -y \
-    && apt install iproute2 -y \
-    && locale-gen pt_BR.UTF-8
-
-ENV export TZ='America/Sao_Paulo'
-
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
-    && apt update \
-    && apt install -y tzdata
-
-RUN sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
-    && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add - \
-    && apt update \
-    && apt install postgresql-9.6 postgresql-contrib-9.6 -y \
-    && apt clean -y
-
-RUN chown postgres:root -R /home/esus \
-    && chmod 777 /home/esus
-
-COPY ./esusbkp.sh /home/esus/esusbkp.sh
-RUN chown postgres:root -R /home/esus
-RUN chmod +x /home/esus/esusbkp.sh
-
-COPY ./postgresql.conf /etc/postgresql/9.6/main/postgresql.conf
-RUN chown postgres:postgres /etc/postgresql/9.6/main/postgresql.conf
-
-COPY ./pg_hba.conf /etc/postgresql/9.6/main/pg_hba.conf
-RUN chown postgres:postgres /etc/postgresql/9.6/main/pg_hba.conf
-
-COPY ./cron-esusdb /etc/cron.d/cron-esusdb
-RUN chown root:root /etc/cron.d/cron-esusdb \
-    && chmod 644 /etc/cron.d/cron-esusdb
-
-COPY ./pgpass /root/.pgpass
-RUN chown postgres:root /root/.pgpass \
-    && chmod 0600 /root/.pgpass
-
-COPY ./log.txt /var/log/esus/log.txt
-RUN chown postgres:root -R /var/log/esus/ \
-    && chmod 774 /var/log/esus/log.txt
-
-RUN systemctl enable postgresql && systemctl enable cron
-
-CMD ["/sbin/init"]
-
-EXPOSE 5432
-
+ENV LANG=pt_BR.UTF-8 \
+    LC_ALL=pt_BR.UTF-8 \
+    POSTGRES_PASSWORD=esus
 ```
 ### Construir a imagem
 ```
-docker build -f Dockerfile.postgresql -t esusdb .
+docker build -f Dockerfile-postgres -t esusdb . --no-cache
 ```
 
-### Subir o container
+### Subir o container (Recomendo)
 ```
-docker run -d -it --name database-esus -h database-esus --net=esus-rede  -p 5432:5432 --restart=always --privileged -v ${PWD}/backups:/home/esus/backups -v /sys/fs/cgroup:/sys/fs/cgroup:ro -e TZ='America/Sao_Paulo' esusdb /sbin/init
+docker run -d \
+  --name esus-db \
+  --hostname esus-db \
+  --network rede-esus \
+  -p 5433:5432 \
+  --restart=always \
+  -e POSTGRES_DB=esus \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=esus \
+  -e TZ=America/Sao_Paulo \
+  -e LC_ALL=pt_BR.UTF-8 \
+  -v $(pwd)/pgdata:/var/lib/postgresql/data \
+  -v $(pwd)/backups:/home/esus/backups \
+  --restart unless-stopped \
+  esusdb
 ```
 
 ### Acessar o container
@@ -142,61 +110,101 @@ CREATE DATABASE esus encoding 'UTF8';
 
 ## Criar Container do Aplicação
 
-### Dockerfile.spring
+### Dockerfile.esus
 
 ```
-FROM jrei/systemd-ubuntu
+FROM antmelekhin/docker-systemd:debian-11
 
-ENV WORKSPACE=/home/esus/sistemas
+# Define variáveis de ambiente
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=pt_BR.UTF-8 \
+    TZ=America/Sao_Paulo
 
-ADD . $WORKSPACE
-WORKDIR $WORKSPACE
+# Instala dependências básicas em etapas separadas para melhor debug
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    wget \
+    gnupg2 \
+    lsb-release \
+    locales \
+    tzdata \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN apt update \
-    && apt upgrade -y \
-    && apt install wget -y \
-    && apt install software-properties-common -y \
-    && apt install sudo -y \
-    && apt install vim -y \
-    && apt install unzip -y \
-    && apt install htop -y \
-    && apt install locales -y \
-    && add-apt-repository ppa:openjdk-r/ppa -y
+# Instala pacotes systemd separadamente
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    systemd \
+    systemd-sysv \
+    dbus \
+    && rm -rf /var/lib/apt/lists/*
 
-ENV export TZ='America/Sao_Paulo'
+# Instala outros pacotes necessários
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    apparmor \
+    procps \
+    file \
+    udisks2 \
+    network-manager \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
-    && apt update \
-    && apt install -y tzdata
+# Configura locale e timezone
+RUN echo "pt_BR.UTF-8 UTF-8" > /etc/locale.gen && \
+    locale-gen pt_BR.UTF-8 && \
+    update-locale LANG=pt_BR.UTF-8 && \
+    ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
+    echo $TZ > /etc/timezone
 
-RUN apt update && apt install openjdk-8-jdk -y \
-    && apt clean -y
+# Adiciona repositório do Zulu OpenJDK 8
+RUN wget -qO - https://repos.azul.com/azul-repo.key | gpg --dearmor -o /usr/share/keyrings/zulu.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/zulu.gpg] https://repos.azul.com/zulu/deb stable main" > /etc/apt/sources.list.d/zulu.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends zulu8-jdk && \
+    rm -rf /var/lib/apt/lists/*
 
+# Define JAVA_HOME
+ENV JAVA_HOME=/usr/lib/jvm/zulu8
+
+# Cria diretórios necessários
+RUN mkdir -p /opt/e-SUS/webserver/config /home/esus/sistemas && \
+    chmod 755 /home/esus
+
+WORKDIR /home/esus/sistemas
+
+# Copia arquivos de configuração
 COPY ./java.conf /etc/java.conf
-RUN chown root:root /etc/java.conf
-
-COPY ./sistemas/ $WORKSPACE
-RUN chown root:root -R $WORKSPACE \
-    && chmod 755 /home/esus
-
 COPY ./application.properties /opt/e-SUS/webserver/config/application.properties
-RUN chown root:root /opt/e-SUS/webserver/config/application.properties \
-    && chmod 644 /home/esus
 
-ENV JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+# Ajusta permissões
+RUN chown root:root /etc/java.conf /opt/e-SUS/webserver/config/application.properties
 
-CMD ["/sbin/init"]
+VOLUME ["/sys/fs/cgroup"]
 
 EXPOSE 8080
+
+CMD ["/sbin/init"]
 ```
 ### Construir a imagem
 ```
-docker build -f Dockerfile.spring -t esusspring .
+docker build -f Dockerfile-esus -t esusapp . --no-cache
 ```
 
-### Subir o container
+### Subir o container (Recomendo)
 ```
-docker run -d -it --name esus-spring -h esus-spring --net=esus-rede -p 8080:8080 --restart=always --privileged -v ${PWD}/sistemas:/home/esus/sistemas -v /sys/fs/cgroup:/sys/fs/cgroup:ro -e TZ='America/Sao_Paulo' esusspring /sbin/init
+docker run -d -it --privileged \
+  --name esus-app \
+  -h esus-app \
+  -p 8080:8080 \
+  --restart=always \
+  --cgroupns=host \
+  --tmpfs /run \
+  --tmpfs /run/lock \
+  --net=rede-esus \
+  -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+  -v $(pwd)/chaves/:/opt/e-SUS/webserver/chaves/:rw \
+  -v $(pwd)/application.properties:/opt/e-SUS/webserver/config/application.properties:rw \
+  -v $(pwd)/sistemas/:/home/esus/sistemas/:rw \
+  -e TZ='America/Sao_Paulo' \
+  esusapp \
+  /lib/systemd/systemd
 ```
 
 ### Acessar o container
@@ -208,7 +216,7 @@ docker exec -it esus-spring /bin/bash
 
 A aplicação deve estar na pasta ```/home/esus/sistemas/```, baixar no site da [APS](https://sisaps.saude.gov.br/esus/)
 
-```java -jar eSUS-AB-PEC-4.2.8-Linux64.jar -console -url="jdbc:postgresql://database-esus:5432/esus" -username="postgres" -password="esus"```
+```java -jar eSUS-AB-PEC-5.4.8-Linux64.jar -console -url="jdbc:postgresql://esus-db:5432/esus" -username="postgres" -password="esus"```
 
 ## Criar docker compose
 
@@ -217,41 +225,53 @@ Usar  com docker-compose, usar ele antes de realizar as etapas de subir os conta
 ### Criar o arquivo docker-compose.yml
 
 ```
-version: "3.1"
+version: '3.8'
+
 services:
-    esus:
-        image: esusspring
-        restart: always
-        container_name: esus-spring
-        hostname: esus-spring
-        ports:
-            - 8080:8080
-        environment:
-            - TZ='America/Sao_Paulo'
-        privileged: true
-        volumes:
-            - ./application.properties:/opt/e-SUS/webserver/config/application.properties
-            - ./sistemas:/home/esus/sistemas
-            - /sys/fs/cgroup:/sys/fs/cgroup:ro
-        command: /sbin/init
-        depends_on:
-            - database
-    database:
-        image: esusdb
-        restart: always
-        container_name: database-esus
-        hostname: database-esus
-        ports:
-            - 5432:5432
-        environment:
-            - TZ='America/Sao_Paulo'
-        privileged: true
-        volumes:
-            - ./backups:/home/esus/backups
-            - /sys/fs/cgroup:/sys/fs/cgroup:ro
-        command: /sbin/init
+  esus-db:
+    image: esusdb
+    container_name: esus-db
+    hostname: esus-db
+    environment:
+      POSTGRES_DB: esus
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: esus
+      TZ: America/Sao_Paulo
+      LC_ALL: pt_BR.UTF-8
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+      - ./backups:/home/esus/backups
+    ports:
+      - "5433:5432"
+    networks:
+      - rede-esus
+    restart: unless-stopped
+
+  esus-app:
+    image: esusapp
+    container_name: esus-app
+    privileged: true
+    hostname: esus-app
+    restart: unless-stopped
+    command: /lib/systemd/systemd
+    ports:
+      - "8080:8080"
+    networks:
+      - rede-esus
+    tmpfs:
+      - /run
+      - /run/lock
+      - /run/systemd
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - ./chaves/:/opt/e-SUS/webserver/chaves/:rw
+      - ./application.properties:/opt/e-SUS/webserver/config/application.properties:rw
+      - ./sistemas/:/home/esus/sistemas/:rw
+    environment:
+      - TZ=America/Sao_Paulo
+
 networks:
-    esus-rede:
+  rede-esus:
 ```
 
 ### Subir os container pelo docker compose

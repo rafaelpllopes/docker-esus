@@ -1,0 +1,68 @@
+FROM antmelekhin/docker-systemd:debian-11
+
+# Define variáveis de ambiente
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=pt_BR.UTF-8 \
+    TZ=America/Sao_Paulo
+
+# Instala dependências básicas em etapas separadas para melhor debug
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    wget \
+    gnupg2 \
+    lsb-release \
+    locales \
+    tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
+# Instala pacotes systemd separadamente
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    systemd \
+    systemd-sysv \
+    dbus \
+    && rm -rf /var/lib/apt/lists/*
+
+# Instala outros pacotes necessários
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    apparmor \
+    procps \
+    file \
+    udisks2 \
+    network-manager \
+    && rm -rf /var/lib/apt/lists/*
+
+# Configura locale e timezone
+RUN echo "pt_BR.UTF-8 UTF-8" > /etc/locale.gen && \
+    locale-gen pt_BR.UTF-8 && \
+    update-locale LANG=pt_BR.UTF-8 && \
+    ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
+    echo $TZ > /etc/timezone
+
+# Adiciona repositório do Zulu OpenJDK 8
+RUN wget -qO - https://repos.azul.com/azul-repo.key | gpg --dearmor -o /usr/share/keyrings/zulu.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/zulu.gpg] https://repos.azul.com/zulu/deb stable main" > /etc/apt/sources.list.d/zulu.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends zulu8-jdk && \
+    rm -rf /var/lib/apt/lists/*
+
+# Define JAVA_HOME
+ENV JAVA_HOME=/usr/lib/jvm/zulu8
+
+# Cria diretórios necessários
+RUN mkdir -p /opt/e-SUS/webserver/config /home/esus/sistemas && \
+    chmod 755 /home/esus
+
+WORKDIR /home/esus/sistemas
+
+# Copia arquivos de configuração
+COPY ./java.conf /etc/java.conf
+COPY ./application.properties /opt/e-SUS/webserver/config/application.properties
+
+# Ajusta permissões
+RUN chown root:root /etc/java.conf /opt/e-SUS/webserver/config/application.properties
+
+VOLUME ["/sys/fs/cgroup"]
+
+EXPOSE 8080
+
+CMD ["/sbin/init"]
