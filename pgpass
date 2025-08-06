@@ -1,1 +1,1 @@
-localhost:5432:esus:postgres:esus
+esus-db:5432:esus:postgres:esus

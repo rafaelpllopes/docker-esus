@@ -6,28 +6,30 @@ Passos para criar e usar o e-SUS PEC pelo docker
 * Docker Compose
 * [Baixar os arquivos que serão usados](https://github.com/rafaelpllopes/docker-esus/archive/refs/heads/main.zip)
 
-### Criar as pastas necessarias do projeto
+### Criar as pastas necessarias do projeto e dar permissão
 ```
-mkdir -p sistemas backups pgdata chaves
+mkdir -p sistemas backups pgdata chaves anexos
+chmod 777 pg_backup.sh standalone.sh restaurar_backup.sh
 ```
 ### Estrutura de diretorios e arquivos
 ```
 .
+├── anexos
 ├── application.properties
 ├── backups
 ├── chaves
-├── cron-esusdb
 ├── docker-compose.yml
 ├── Dockerfile-esus
 ├── Dockerfile-postgres
-├── esusbkp.sh
 ├── init-db.sh
 ├── java.conf
-├── log.txt
-├── pgdata
+├── pg_backup.sh
+├── pgdata  [error opening dir]
 ├── pgpass
 ├── README.md
-└── sistemas
+├── restaurar_backup.sh
+├── sistemas
+└── standalone.sh
 ```
 
 ## Criar Container do Banco de Dados Postgresql
@@ -55,7 +57,7 @@ ENV LANG=pt_BR.UTF-8 \
 docker build -f Dockerfile-postgres -t esusdb . --no-cache
 ```
 
-### Subir o container (Recomendo)
+### Subir o container
 ```
 docker run -d \
   --name esus-db \
@@ -76,7 +78,7 @@ docker run -d \
 
 ### Acessar o container
 ```
-docker exec -it databaseesus /bin/bash
+docker exec -it esus-db bash
 ```
 ### Configurar o container
 
@@ -101,12 +103,18 @@ CREATE DATABASE esus encoding 'UTF8';
  esus      | postgres | UTF8     | pt_BR.UTF-8 | pt_BR.UTF-8 |
 ```
 5. Sair do psql ```\q```
-6. Restaurar o backup "o arquivo deve estar na pastas backups" ```pg_restore 20210814000000-itapeva-sp.backup -d esus```
+6. Restaurar o backup "o arquivo deve estar na pastas backups" ```pg_restore 20250806093531_itapeva-sp.backup -d esus```
 
-### Configurar o pg_hba.conf
+#### Ou usar o comando
+```docker exec -it esus-db bash -c "chmod +x /home/esus/backups/restaurar_backup.sh && /home/esus/backups/restaurar_backup.sh"```
 
-1. Verificar qual o ip da rede esus-rede ```docker network inspect esus-rede```
-2. Adicionar no arquivo pg_hba.config ```host    all             all             ip_da_rede (Ex. 172.17.0.0/24)           md5 ``` para liberar o acesso ao banco de dados
+### Criar agendar os backups
+crontab -e
+
+Colocar o caminho da pasta (ideal que coloque o caminho completo) docker-esus exemplo.:
+
+- 0 23 * * * cd ~/docker-esus && docker compose run --rm pg_backup
+- 0 6 * * * cd ~/docker-esus && docker compose run --rm pg_backup
 
 ## Criar Container do Aplicação
 
@@ -187,7 +195,7 @@ CMD ["/sbin/init"]
 docker build -f Dockerfile-esus -t esusapp . --no-cache
 ```
 
-### Subir o container (Recomendo)
+### Subir o container
 ```
 docker run -d -it --privileged \
   --name esus-app \
@@ -201,6 +209,8 @@ docker run -d -it --privileged \
   -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
   -v $(pwd)/chaves/:/opt/e-SUS/webserver/chaves/:rw \
   -v $(pwd)/application.properties:/opt/e-SUS/webserver/config/application.properties:rw \
+  -v $(pwd)/standalone.sh:/opt/e-SUS/webserver/standalone.sh:rw
+  -v $(pwd)/anexos/:/home/esus/anexos/:rw
   -v $(pwd)/sistemas/:/home/esus/sistemas/:rw \
   -e TZ='America/Sao_Paulo' \
   esusapp \
@@ -209,18 +219,21 @@ docker run -d -it --privileged \
 
 ### Acessar o container
 ```
-docker exec -it esus-spring /bin/bash
+docker exec -it esus-app bash
 ```
 
 ### Instalar a aplicação
 
 A aplicação deve estar na pasta ```/home/esus/sistemas/```, baixar no site da [APS](https://sisaps.saude.gov.br/esus/)
 
-```java -jar eSUS-AB-PEC-5.4.8-Linux64.jar -console -url="jdbc:postgresql://esus-db:5432/esus" -username="postgres" -password="esus"```
+```java -jar eSUS-AB-PEC-5.4.9-Linux64.jar -console -url="jdbc:postgresql://esus-db:5432/esus" -username="postgres" -password="esus"```
 
 ## Criar docker compose
 
-Usar  com docker-compose, usar ele antes de realizar as etapas de subir os containers e configurar
+Usar com docker-compose, criar as imagens.
+
+```docker build -f Dockerfile-esus -t esusapp . --no-cache```
+```docker build -f Dockerfile-postgres -t esusdb . --no-cache```
 
 ### Criar o arquivo docker-compose.yml
 
@@ -240,6 +253,7 @@ services:
       LC_ALL: pt_BR.UTF-8
     volumes:
       - ./pgdata:/var/lib/postgresql/data
+      - ./restaurar_backup.sh:/home/esus/backups/restaurar_backup.sh
       - ./backups:/home/esus/backups
     ports:
       - "5433:5432"
@@ -253,7 +267,14 @@ services:
     privileged: true
     hostname: esus-app
     restart: unless-stopped
-    command: /lib/systemd/systemd
+    command: >
+      bash -c "
+      if [ -f /opt/e-SUS/webserver/standalone.sh ]; then
+        chmod 777 /opt/e-SUS/webserver/standalone.sh;
+      fi
+      /lib/systemd/systemd
+      "
+    cgroup: host
     ports:
       - "8080:8080"
     networks:
@@ -266,13 +287,30 @@ services:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
       - ./chaves/:/opt/e-SUS/webserver/chaves/:rw
       - ./application.properties:/opt/e-SUS/webserver/config/application.properties:rw
+      - ./standalone.sh:/opt/e-SUS/webserver/standalone.sh:rw
+      - ./anexos/:/home/esus/anexos/:rw
       - ./sistemas/:/home/esus/sistemas/:rw
     environment:
       - TZ=America/Sao_Paulo
+  pg_backup:
+    image: postgres:9.6
+    container_name: esus-bkp
+    depends_on:
+      - esus-db
+    environment:
+      TZ: America/Sao_Paulo
+    networks:
+      - rede-esus
+    volumes:
+      - ./backups:/backups:rw
+      - ./pg_backup.sh:/pg_backup.sh:rw
+      - ./pgpass:/root/.pgpass:rw
+    entrypoint: ["/bin/bash", "-c"]
+    command: "/pg_backup.sh"
 
 networks:
   rede-esus:
 ```
 
 ### Subir os container pelo docker compose
-```docker-compose up -d```
+```docker compose up -d esus-db esus-app```

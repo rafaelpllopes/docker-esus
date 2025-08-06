@@ -1,2 +1,0 @@
-00 04 * * * root sh /home/esus/esusbkp.sh > /dev/tty1
-00 23 * * * root sh /home/esus/esusbkp.sh > /dev/tty1
